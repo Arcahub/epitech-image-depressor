@@ -1,41 +1,45 @@
-use image::{Rgb, RgbImage};
+use image::{ImageBuffer, Rgb};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::io::{BufRead, BufReader};
-use std::{fs::File, num::ParseIntError, path::PathBuf, str::FromStr, u32};
+use std::{fs::File, io::BufRead, path::PathBuf, str::FromStr, u32};
+use std::{io::BufReader, string::ParseError};
 
-struct PixelDescr {
-    pub x: u32,
-    pub y: u32,
+#[derive(Debug)]
+struct Cluster {
     pub color: Rgb<u8>,
+    pub pixels: Vec<PixelCoord>,
 }
 
-impl FromStr for PixelDescr {
-    type Err = ParseIntError;
+#[derive(Debug)]
+struct PixelCoord {
+    pub x: u32,
+    pub y: u32,
+}
+
+impl FromStr for PixelCoord {
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref FMT: Regex =
+            static ref PIXEL_FMT: Regex =
                 Regex::new(r"\(([0-9]+),([0-9]+)\) \(([0-9]+),([0-9]+),([0-9]+)\)").unwrap();
         }
-        let cap = FMT.captures(s).unwrap();
-        Ok(PixelDescr {
+        let cap = PIXEL_FMT.captures(s).unwrap();
+        Ok(PixelCoord {
             x: cap.get(1).unwrap().as_str().parse().unwrap(),
             y: cap.get(2).unwrap().as_str().parse().unwrap(),
-            color: Rgb([0, 0, 0]),
         })
     }
 }
 
 pub fn txt_to_img(input_path: PathBuf, output_path: PathBuf) {
     let input_file = File::open(input_path).expect("Can't open input file");
-    let mut width: u32 = 0;
-    let mut height: u32 = 0;
-    let mut pixels: Vec<PixelDescr> = Vec::new();
+    let mut width: u32 = 1;
+    let mut height: u32 = 1;
 
     let buff = BufReader::new(input_file);
     let mut set_cluster: bool = false;
-    let mut cluster_color: Rgb<u8> = Rgb([0, 0, 0]);
+    let mut clusters: Vec<Cluster> = Vec::new();
     let cluster_r: Regex = Regex::new(r"\((\d{1,3}),(\d{1, 3}),(\d{1,3})\)").unwrap();
 
     for line_raw in buff.lines() {
@@ -49,29 +53,34 @@ pub fn txt_to_img(input_path: PathBuf, output_path: PathBuf) {
         } else if set_cluster {
             let cap = cluster_r.captures(&line).expect("Invalid line format");
 
-            cluster_color = Rgb([
-                cap.get(1).unwrap().as_str().parse().unwrap(),
-                cap.get(2).unwrap().as_str().parse().unwrap(),
-                cap.get(3).unwrap().as_str().parse().unwrap(),
-            ]);
+            let cluster: Cluster = Cluster {
+                color: Rgb([
+                    cap.get(1).unwrap().as_str().parse().unwrap(),
+                    cap.get(2).unwrap().as_str().parse().unwrap(),
+                    cap.get(3).unwrap().as_str().parse().unwrap(),
+                ]),
+                pixels: Vec::new(),
+            };
+            clusters.push(cluster);
             continue;
         }
-        let mut pixel: PixelDescr = line.parse().unwrap();
+        let pixel: PixelCoord = line.parse().unwrap();
         if pixel.x > width {
             width = pixel.x;
         }
         if pixel.y > height {
-            height = pixel.y
+            height = pixel.y;
         }
-        pixel.color = cluster_color;
-        pixels.push(pixel);
+        clusters.last_mut().unwrap().pixels.push(pixel);
     }
-    println!("{}, {}", width, height);
-    let mut output_buff = RgbImage::new(width + 1, height + 1);
+    let mut output_buff = ImageBuffer::new(width + 1, height + 1);
 
-    for pixel in pixels {
-        output_buff.put_pixel(pixel.x, pixel.y, pixel.color);
+    for cluster in clusters {
+        for pixel in cluster.pixels {
+            output_buff.put_pixel(pixel.x, pixel.y, cluster.color);
+        }
     }
+
     output_buff
         .save(output_path)
         .expect("Can't open output file");
