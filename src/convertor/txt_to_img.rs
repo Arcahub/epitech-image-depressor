@@ -1,13 +1,10 @@
 use image::{ImageBuffer, Rgb};
-use lazy_static::lazy_static;
 extern crate nom;
 
 use nom::{
     alt, character::complete::digit0, combinator::eof, do_parse, eof, many_till, map_res,
     multi::many_till, named, opt, peek, tag, take_until,
 };
-use regex::Regex;
-use std::string::ParseError;
 use std::{fs::File, io::Read, path::PathBuf, str::FromStr, u32};
 
 #[derive(Debug)]
@@ -71,22 +68,6 @@ named!(
 struct PixelCoord {
     pub x: u32,
     pub y: u32,
-}
-
-impl FromStr for PixelCoord {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        lazy_static! {
-            static ref PIXEL_FMT: Regex =
-                Regex::new(r"\(([0-9]+),([0-9]+)\) \(([0-9]+),([0-9]+),([0-9]+)\)").unwrap();
-        }
-        let cap = PIXEL_FMT.captures(s).unwrap();
-        Ok(PixelCoord {
-            x: cap.get(1).unwrap().as_str().parse().unwrap(),
-            y: cap.get(2).unwrap().as_str().parse().unwrap(),
-        })
-    }
 }
 
 pub fn txt_to_img(input_path: PathBuf, output_path: PathBuf) {

@@ -1,5 +1,5 @@
 [package]
-name = "imagecompressor-converter"
+name = "imagedepressor"
 version = "0.1.0"
 authors = ["Arcarox <arcarox@localhost.localdomain>"]
 edition = "2018"
@@ -9,6 +9,4 @@ edition = "2018"
 [dependencies]
 structopt = "0.3"
 image = "0.23.14"
-regex = "1.4.5"
-lazy_static = "1.4.0"
 nom = "6.1.2"
