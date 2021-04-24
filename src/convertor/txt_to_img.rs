@@ -1,14 +1,71 @@
 use image::{ImageBuffer, Rgb};
 use lazy_static::lazy_static;
+extern crate nom;
+
+use nom::{
+    alt, character::complete::digit0, combinator::eof, do_parse, eof, many_till, map_res,
+    multi::many_till, named, opt, peek, tag, take_until,
+};
 use regex::Regex;
-use std::{fs::File, io::BufRead, path::PathBuf, str::FromStr, u32};
-use std::{io::BufReader, string::ParseError};
+use std::string::ParseError;
+use std::{fs::File, io::Read, path::PathBuf, str::FromStr, u32};
 
 #[derive(Debug)]
 struct Cluster {
     pub color: Rgb<u8>,
     pub pixels: Vec<PixelCoord>,
 }
+
+named!(uint8 <&str, u8>,
+    map_res!(digit0, FromStr::from_str)
+);
+
+named!(uint32 <&str, u32>,
+    map_res!(digit0, FromStr::from_str)
+);
+
+named!(colorf<&str, Rgb<u8>>, do_parse!(
+    tag!("(") >>
+    r: uint8 >>
+    tag!(",") >>
+    g: uint8 >>
+    tag!(",") >>
+    b: uint8 >>
+    tag!(")\n") >>
+    (Rgb([r, g, b]))
+));
+
+named!(pixelf<&str, PixelCoord>, do_parse!(
+    tag!("(") >>
+    x: uint32 >>
+    tag!(",") >>
+    y: uint32 >>
+    tag!(")") >>
+    take_until!("\n") >>
+    opt!(tag!("\n")) >>
+    (PixelCoord {x: x, y: y})
+));
+
+named!(pixelsf < &str, Vec < PixelCoord >>, do_parse!(
+    pixels: many_till!(
+        pixelf,
+        alt!(
+            eof!() |
+            peek!(tag!("--\n"))
+        )) >>
+    (pixels.0)
+));
+
+named!(
+    clusterf<&str, Cluster>,
+    do_parse!(
+        tag!("--\n") >>
+        color: colorf >>
+        tag!("-\n") >>
+        pixels: pixelsf >>
+        (Cluster { color: color, pixels: pixels })
+    )
+);
 
 #[derive(Debug)]
 struct PixelCoord {
@@ -33,50 +90,29 @@ impl FromStr for PixelCoord {
 }
 
 pub fn txt_to_img(input_path: PathBuf, output_path: PathBuf) {
-    let input_file = File::open(input_path).expect("Can't open input file");
+    let mut input_file = File::open(input_path).expect("Can't open input file");
+    let mut content: String = String::from("");
+
+    input_file.read_to_string(&mut content).unwrap();
+
+    let (_, (clusters, _)) = many_till(clusterf, eof)(&content).unwrap();
     let mut width: u32 = 1;
     let mut height: u32 = 1;
 
-    let buff = BufReader::new(input_file);
-    let mut set_cluster: bool = false;
-    let mut clusters: Vec<Cluster> = Vec::new();
-    let cluster_r: Regex = Regex::new(r"\((\d{1,3}),(\d{1, 3}),(\d{1,3})\)").unwrap();
-
-    for line_raw in buff.lines() {
-        let line = line_raw.unwrap();
-        if line == "--" {
-            set_cluster = true;
-            continue;
-        } else if line == "-" {
-            set_cluster = false;
-            continue;
-        } else if set_cluster {
-            let cap = cluster_r.captures(&line).expect("Invalid line format");
-
-            let cluster: Cluster = Cluster {
-                color: Rgb([
-                    cap.get(1).unwrap().as_str().parse().unwrap(),
-                    cap.get(2).unwrap().as_str().parse().unwrap(),
-                    cap.get(3).unwrap().as_str().parse().unwrap(),
-                ]),
-                pixels: Vec::new(),
-            };
-            clusters.push(cluster);
-            continue;
+    for cluster in &clusters {
+        for pixel in &cluster.pixels {
+            if pixel.x > width {
+                width = pixel.x;
+            }
+            if pixel.y > height {
+                height = pixel.y;
+            }
         }
-        let pixel: PixelCoord = line.parse().unwrap();
-        if pixel.x > width {
-            width = pixel.x;
-        }
-        if pixel.y > height {
-            height = pixel.y;
-        }
-        clusters.last_mut().unwrap().pixels.push(pixel);
     }
     let mut output_buff = ImageBuffer::new(width + 1, height + 1);
 
-    for cluster in clusters {
-        for pixel in cluster.pixels {
+    for cluster in &clusters {
+        for pixel in &cluster.pixels {
             output_buff.put_pixel(pixel.x, pixel.y, cluster.color);
         }
     }
