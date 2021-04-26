@@ -8,7 +8,6 @@ use structopt::StructOpt;
 pub fn run() {
     let opts: Opts = Opts::from_args();
 
-    println!("{:?}", opts);
     match ImageReader::open(opts.input.clone())
         .expect(&format!(
             "Can't open input file {}",
